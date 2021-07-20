@@ -27,27 +27,27 @@ class PylintTool(ToolBase):
         self._collector = self._linter = None
         self._orig_sys_path = []
 
-    def _prospector_configure(self, prospector_config, linter):
+    def _prospector_configure(self, prospector_config, linter_instance):
         errors = []
-        linter.load_default_plugins()
+        linter_instance.load_default_plugins()
 
         if "django" in prospector_config.libraries:
-            linter.load_plugin_modules(["pylint_django"])
+            linter_instance.load_plugin_modules(["pylint_django"])
         if "celery" in prospector_config.libraries:
-            linter.load_plugin_modules(["pylint_celery"])
+            linter_instance.load_plugin_modules(["pylint_celery"])
         if "flask" in prospector_config.libraries:
-            linter.load_plugin_modules(["pylint_flask"])
+            linter_instance.load_plugin_modules(["pylint_flask"])
 
         profile_path = os.path.join(prospector_config.workdir, prospector_config.profile.name)
         for plugin in prospector_config.profile.pylint.get("load-plugins", []):
             try:
-                linter.load_plugin_modules([plugin])
+                linter_instance.load_plugin_modules([plugin])
             except ImportError:
                 errors.append(self._error_message(profile_path, "Could not load plugin %s" % plugin))
 
         for msg_id in prospector_config.get_disabled_messages("pylint"):
             try:
-                linter.disable(msg_id)
+                linter_instance.disable(msg_id)
             # pylint: disable=pointless-except
             except UnknownMessageError:
                 # If the msg_id doesn't exist in PyLint any more,
@@ -56,7 +56,7 @@ class PylintTool(ToolBase):
 
         options = prospector_config.tool_options("pylint")
 
-        for checker in linter.get_checkers():
+        for checker in linter_instance.get_checkers():
             if not hasattr(checker, "options"):
                 continue
             for option in checker.options:
@@ -69,42 +69,36 @@ class PylintTool(ToolBase):
         # still generate an 'FL0001' unused import warning from pyflakes.
         # Using the information from these messages, we can figure out what
         # was disabled.
-        linter.disable("locally-disabled")  # notification about disabling a message
-        linter.enable("file-ignored")  # notification about disabling an entire file
-        linter.enable("suppressed-message")  # notification about a message being supressed
-        linter.disable("useless-suppression")  # notification about message supressed which was not raised
-        linter.disable("deprecated-pragma")  # notification about use of deprecated 'pragma' option
+        linter_instance.disable("locally-disabled")  # notification about disabling a message
+        linter_instance.enable("file-ignored")  # notification about disabling an entire file
+        linter_instance.enable("suppressed-message")  # notification about a message being suppressed
+        linter_instance.disable("useless-suppression")  # notification about message suppressed which was not raised
+        linter_instance.disable("deprecated-pragma")  # notification about use of deprecated 'pragma' option
 
-        # disable the 'mixed indentation' warning, since it actually will only
-        # allow the indentation specified in the pylint configuration file; we
-        # replace it instead with our own version which is more lenient and
-        # configurable
-        linter.disable("mixed-indentation")
-        indent_checker = IndentChecker(linter)
-        linter.register_checker(indent_checker)
+        indent_checker_instance = IndentChecker(linter_instance)
+        linter_instance.register_checker(indent_checker_instance)
 
         max_line_length = prospector_config.max_line_length
-        for checker in linter.get_checkers():
+        for checker in linter_instance.get_checkers():
             if not hasattr(checker, "options"):
                 continue
             for option in checker.options:
-                if max_line_length is not None:
-                    if option[0] == "max-line-length":
-                        checker.set_option("max-line-length", max_line_length)
+                if max_line_length is not None and option[0] == "max-line-length":
+                    checker.set_option("max-line-length", max_line_length)
         return errors
 
     def _error_message(self, filepath, message):
         location = Location(filepath, None, None, 0, 0)
         return Message("prospector", "config-problem", location, message)
 
-    def _pylintrc_configure(self, pylintrc, linter):
+    def _pylintrc_configure(self, pylintrc, linter_instance):
         errors = []
-        linter.load_default_plugins()
-        are_plugins_loaded = linter.config_from_file(pylintrc)
-        if not are_plugins_loaded and hasattr(linter.config, "load_plugins"):
-            for plugin in linter.config.load_plugins:
+        linter_instance.load_default_plugins()
+        are_plugins_loaded = linter_instance.config_from_file(pylintrc)
+        if not are_plugins_loaded and hasattr(linter_instance.config, "load_plugins"):
+            for plugin in linter_instance.config.load_plugins:
                 try:
-                    linter.load_plugin_modules([plugin])
+                    linter_instance.load_plugin_modules([plugin])
                 except ImportError:
                     errors.append(self._error_message(pylintrc, "Could not load plugin %s" % plugin))
         return errors
@@ -119,13 +113,13 @@ class PylintTool(ToolBase):
         pylint_options = prospector_config.tool_options("pylint")
         self._set_path_finder(extra_sys_path, pylint_options)
 
-        linter = ProspectorLinter(found_files)
+        linter_instance = ProspectorLinter(found_files)
 
         ext_found = False
         configured_by = None
 
         config_messages, configured_by = self._get_pylint_configuration(
-            check_paths, config_messages, configured_by, ext_found, linter, prospector_config, pylint_options
+            check_paths, config_messages, configured_by, ext_found, linter_instance, prospector_config, pylint_options
         )
 
         # Pylint 1.4 introduced the idea of explicitly specifying which
@@ -136,18 +130,18 @@ class PylintTool(ToolBase):
         # the safety gained through this approach seems minimal. Leaving
         # it on means that the inference engine cannot do much inference
         # on modules with C-extensions which is a bit useless.
-        linter.set_option("unsafe-load-any-extension", True)
+        linter_instance.set_option("unsafe-load-any-extension", True)
 
         # we don't want similarity reports right now
-        linter.disable("similarities")
+        linter_instance.disable("similarities")
 
         # use the collector 'reporter' to simply gather the messages
         # given by PyLint
-        self._collector = Collector(linter.msgs_store)
-        linter.set_reporter(self._collector)
-        if linter.config.jobs == 0:
-            linter.config.jobs = _cpu_count()
-        self._linter = linter
+        self._collector = Collector(linter_instance.msgs_store)
+        linter_instance.set_reporter(self._collector)
+        if linter_instance.config.jobs == 0:
+            linter_instance.config.jobs = _cpu_count()
+        self._linter = linter_instance
         return configured_by, config_messages
 
     def _set_path_finder(self, extra_sys_path, pylint_options):
@@ -181,7 +175,7 @@ class PylintTool(ToolBase):
                 check_paths.add(package_path)
         for filepath in found_files.iter_module_paths(abspath=False):
             package = os.path.dirname(filepath).split(os.path.sep)
-            for i in range(0, len(package)):
+            for i in range(len(package)):
                 if os.path.join(*package[: i + 1]) in check_paths:
                     break
             else:
@@ -190,7 +184,7 @@ class PylintTool(ToolBase):
         return check_paths
 
     def _get_pylint_configuration(
-        self, check_paths, config_messages, configured_by, ext_found, linter, prospector_config, pylint_options
+        self, check_paths, config_messages, configured_by, ext_found, linter_instance, prospector_config, pylint_options
     ):
         if prospector_config.use_external_config("pylint"):
             # try to find a .pylintrc
@@ -210,12 +204,12 @@ class PylintTool(ToolBase):
                 configured_by = pylintrc
                 ext_found = True
 
-                self._args = linter.load_command_line_configuration(check_paths)
-                config_messages += self._pylintrc_configure(pylintrc, linter)
+                self._args = linter_instance.load_command_line_configuration(check_paths)
+                config_messages += self._pylintrc_configure(pylintrc, linter_instance)
         if not ext_found:
-            linter.reset_options()
-            self._args = linter.load_command_line_configuration(check_paths)
-            config_messages = self._prospector_configure(prospector_config, linter)
+            linter_instance.reset_options()
+            self._args = linter_instance.load_command_line_configuration(check_paths)
+            config_messages = self._prospector_configure(prospector_config, linter_instance)
         return config_messages, configured_by
 
     def _combine_w0614(self, messages):
@@ -234,12 +228,13 @@ class PylintTool(ToolBase):
                 out.append(message)
 
         for location, message_list in by_loc.items():
-            names = []
-            for msg in message_list:
-                names.append(_UNUSED_WILDCARD_IMPORT_RE.match(msg.message).group(1))
+            names = [
+                _UNUSED_WILDCARD_IMPORT_RE.match(msg.message).group(1)
+                for msg in message_list
+            ]
 
-            msgtxt = "Unused imports from wildcard import: %s" % ", ".join(names)
-            combined_message = Message("pylint", "unused-wildcard-import", location, msgtxt)
+            msg_txt = "Unused imports from wildcard import: %s" % ", ".join(names)
+            combined_message = Message("pylint", "unused-wildcard-import", location, msg_txt)
             out.append(combined_message)
 
         return out
