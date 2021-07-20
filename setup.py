@@ -28,7 +28,7 @@ _INSTALL_REQUIRES = [
     "mccabe>=0.5.0",
     "pyflakes<3,>=2.2.0",
     "pycodestyle<3,>=2.6.0",
-    "pep8-naming>=0.3.3,<=0.12.0",
+    "pep8-naming>=0.3.3,<0.12.0",
     "pydocstyle>=2.0.0",
     "pylint<3,>=2.5.3",
     "pylint-django<3",
