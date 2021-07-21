@@ -32,7 +32,7 @@ _INSTALL_REQUIRES = [
     "pydocstyle>=2.0.0",
     "pylint<3,>=2.5.3",
     "pylint-django<3",
-    "astroid==2.6.4",
+    "astroid<2.7",
 ]
 
 
